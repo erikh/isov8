@@ -1,5 +1,17 @@
 use std::sync::Once;
 
+pub type Result = std::result::Result<Response, Error>;
+
+pub enum Response {
+    NoValue,
+    Value(v8::Value),
+}
+
+pub enum Error {
+    Timeout,
+    Value(v8::Value),
+}
+
 pub struct IsoV8 {
     isolate: v8::OwnedIsolate,
     context: v8::Global<v8::Context>,
@@ -11,6 +23,24 @@ impl IsoV8 {
         let mut isolate = v8::Isolate::new(Default::default());
         let context = initialize_slots(&mut isolate);
         Self { isolate, context }
+    }
+
+    pub fn eval(&mut self, source: impl Into<String>) -> Result {
+        self.try_catch(|scope| {
+            let source = create_string(scope, source);
+            let script = v8::Script::compile(scope, source, None);
+            exception(scope)?;
+            let result = script.unwrap().run(scope).unwrap();
+            exception(scope)?;
+            Ok(Response::Value(*result))
+        })
+    }
+
+    pub fn try_catch<F>(&mut self, func: F) -> Result
+    where
+        F: FnOnce(&mut v8::TryCatch<v8::HandleScope>) -> Result,
+    {
+        self.scope(|scope| func(&mut v8::TryCatch::new(scope)))
     }
 
     pub fn scope<F, T>(&mut self, func: F) -> T
@@ -41,17 +71,27 @@ fn init_v8() {
     });
 }
 
-pub struct GlobalContext {
-    context: v8::Global<v8::Context>,
-}
-
 fn initialize_slots(isolate: &mut v8::Isolate) -> v8::Global<v8::Context> {
     let scope = &mut v8::HandleScope::new(isolate);
     let context = v8::Context::new(scope, v8::ContextOptions::default());
     let scope = &mut v8::ContextScope::new(scope, context);
     let global_context = v8::Global::new(scope, context);
-    scope.set_slot(GlobalContext {
-        context: global_context.clone(),
-    });
     global_context
+}
+
+pub fn exception(scope: &mut v8::TryCatch<v8::HandleScope>) -> Result {
+    if scope.has_terminated() {
+        Err(Error::Timeout)
+    } else if let Some(exception) = scope.exception().clone() {
+        Err(Error::Value(*exception))
+    } else {
+        Ok(Response::NoValue)
+    }
+}
+
+fn create_string<'s>(
+    scope: &mut v8::HandleScope<'s>,
+    value: impl Into<String>,
+) -> v8::Local<'s, v8::String> {
+    v8::String::new(scope, value.into().as_str()).expect("string exceeds maximum length")
 }
