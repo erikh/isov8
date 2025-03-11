@@ -1,10 +1,166 @@
+use std::collections::BTreeMap;
 use std::sync::Once;
 
-pub type Result = std::result::Result<Response, Error>;
+pub type Result = std::result::Result<Value, Error>;
 
-pub enum Response {
+pub type Array = Vec<Value>;
+pub type Object = BTreeMap<Value, Value>;
+
+#[derive(Debug)]
+pub enum Value {
     NoValue,
-    Value(v8::Value),
+    Undefined,
+    Null,
+    /// The JavaScript value `true` or `false`.
+    Boolean(bool),
+    /// A JavaScript floating point number.
+    Float(f64),
+    Integer(i32),
+    UnsignedInteger(u32),
+    /// Elapsed milliseconds since Unix epoch.
+    Date(f64),
+    /// An immutable JavaScript string, managed by V8.
+    String(String),
+    /// Reference to a JavaScript array.
+    Array(Array),
+    /// Reference to a JavaScript function.
+    Function(v8::Function),
+    /// Reference to a JavaScript object. If a value is a function or an array in JavaScript, it
+    /// will be converted to `Value::Array` or `Value::Function` instead of `Value::Object`.
+    Object(Object),
+}
+
+impl Eq for Value {}
+
+impl Ord for Value {
+    fn cmp(&self, _other: &Self) -> std::cmp::Ordering {
+        std::cmp::Ordering::Equal
+    }
+}
+impl PartialOrd for Value {
+    fn partial_cmp(&self, _other: &Self) -> Option<std::cmp::Ordering> {
+        None
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            Self::Object(o) => match other {
+                Self::Object(o2) => {
+                    for x in o.keys() {
+                        if !o2.contains_key(x) {
+                            return false;
+                        }
+                    }
+                    for x in o2.keys() {
+                        if !o.contains_key(x) {
+                            return false;
+                        }
+                    }
+
+                    true
+                }
+                _ => false,
+            },
+            _ => *self == *other,
+        }
+    }
+}
+
+impl std::hash::Hash for Value {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Self::NoValue => state.write_u8(0),
+            Self::Undefined => state.write_u8(1),
+            Self::Null => state.write_u8(3),
+            Self::Boolean(t) => state.write_u8(if *t { 4 } else { 5 }),
+            Self::Float(f) => {
+                state.write_u8(6);
+                state.write_u64(*f as u64)
+            }
+            Self::Integer(i) => {
+                state.write_u8(7);
+                state.write_i32(*i)
+            }
+            Self::UnsignedInteger(u) => {
+                state.write_u8(8);
+                state.write_u32(*u)
+            }
+            Self::Date(d) => {
+                state.write_u8(9);
+                state.write_u64(*d as u64)
+            }
+            Self::String(s) => {
+                state.write_u8(10);
+                state.write(s.as_bytes());
+            }
+            Self::Array(a) => {
+                state.write_u8(11);
+                for x in a {
+                    x.hash(state);
+                }
+            }
+            // FIXME more detail
+            Self::Function(_) => {
+                state.write_u8(12);
+            }
+            Self::Object(o) => {
+                state.write_u8(13);
+                for x in o.keys() {
+                    x.hash(state);
+                    o.get(x).unwrap().hash(state);
+                }
+            }
+        }
+    }
+}
+
+impl Value {
+    pub fn new(scope: &mut v8::HandleScope<'_>, value: v8::Local<'_, v8::Value>) -> Self {
+        if value.is_null() {
+            return Self::Null;
+        } else if value.is_undefined() {
+            return Self::Undefined;
+        } else if value.is_number() {
+            return Self::Float(value.number_value(scope).unwrap());
+        } else if value.is_uint32() {
+            return Self::UnsignedInteger(value.uint32_value(scope).unwrap());
+        } else if value.is_int32() {
+            return Self::Integer(value.int32_value(scope).unwrap());
+        } else if value.is_string() {
+            return Self::String(value.to_rust_string_lossy(scope));
+        } else if value.is_date() {
+            return Self::Date(value.number_value(scope).unwrap());
+        } else if value.is_boolean() {
+            return Self::Boolean(value.boolean_value(scope));
+        } else if value.is_array() {
+            let ary = value.cast::<v8::Array>();
+            let mut new = Array::new();
+
+            for x in 0..ary.length() {
+                let v = ary.get_index(scope, x).unwrap();
+                new.push(Self::new(scope, v));
+            }
+
+            return Self::Array(new);
+        } else if value.is_object() {
+            let obj = value.cast::<v8::Object>();
+            let props = obj.get_property_names(scope, Default::default()).unwrap();
+            let ary = props.cast::<v8::Array>();
+            let mut new = Object::default();
+
+            for x in 0..ary.length() {
+                let v = ary.get_index(scope, x).unwrap();
+                let k = obj.get(scope, v).unwrap();
+                new.insert(Self::new(scope, v), Self::new(scope, k));
+            }
+
+            return Value::Object(new);
+        } else {
+            return Value::NoValue;
+        }
+    }
 }
 
 pub enum Error {
@@ -32,7 +188,7 @@ impl IsoV8 {
             exception(scope)?;
             let result = script.unwrap().run(scope).unwrap();
             exception(scope)?;
-            Ok(Response::Value(*result))
+            Ok(Value::new(scope, result))
         })
     }
 
@@ -85,7 +241,7 @@ pub fn exception(scope: &mut v8::TryCatch<v8::HandleScope>) -> Result {
     } else if let Some(exception) = scope.exception().clone() {
         Err(Error::Value(*exception))
     } else {
-        Ok(Response::NoValue)
+        Ok(Value::NoValue)
     }
 }
 
