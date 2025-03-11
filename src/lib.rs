@@ -34,7 +34,7 @@ impl Eq for Value {}
 
 impl Ord for Value {
     fn cmp(&self, _other: &Self) -> std::cmp::Ordering {
-        std::cmp::Ordering::Equal
+        std::cmp::Ordering::Greater
     }
 }
 impl PartialOrd for Value {
@@ -55,6 +55,18 @@ impl PartialEq for Value {
                     }
                     for x in o2.keys() {
                         if !o.contains_key(x) {
+                            return false;
+                        }
+                    }
+
+                    true
+                }
+                _ => false,
+            },
+            Self::Array(a) => match other {
+                Self::Array(a2) => {
+                    for x in 0..a.len() {
+                        if a2[x] != a[x] {
                             return false;
                         }
                     }
@@ -156,13 +168,14 @@ impl Value {
                 new.insert(Self::new(scope, v), Self::new(scope, k));
             }
 
-            return Value::Object(new);
+            return Self::Object(new);
         } else {
-            return Value::NoValue;
+            return Self::NoValue;
         }
     }
 }
 
+#[derive(Debug)]
 pub enum Error {
     Timeout,
     Value(v8::Value),
@@ -250,4 +263,19 @@ fn create_string<'s>(
     value: impl Into<String>,
 ) -> v8::Local<'s, v8::String> {
     v8::String::new(scope, value.into().as_str()).expect("string exceeds maximum length")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_basic_eval() {
+        let mut iso = IsoV8::new();
+        let result = iso.eval("1 + 1").unwrap();
+        assert_eq!(result, Value::Float(2.0));
+        // let result = iso.eval("[1, 2]").unwrap();
+        // let a = Value::Array(vec![Value::Float(1.0), Value::Float(2.0)]);
+        // assert_eq!(result, a);
+    }
 }
