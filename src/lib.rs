@@ -11,22 +11,14 @@ pub enum Value {
     NoValue,
     Undefined,
     Null,
-    /// The JavaScript value `true` or `false`.
     Boolean(bool),
-    /// A JavaScript floating point number.
     Float(f64),
     Integer(i32),
     UnsignedInteger(u32),
-    /// Elapsed milliseconds since Unix epoch.
     Date(f64),
-    /// An immutable JavaScript string, managed by V8.
     String(String),
-    /// Reference to a JavaScript array.
     Array(Array),
-    /// Reference to a JavaScript function.
     Function(v8::Function),
-    /// Reference to a JavaScript object. If a value is a function or an array in JavaScript, it
-    /// will be converted to `Value::Array` or `Value::Function` instead of `Value::Object`.
     Object(Object),
 }
 
