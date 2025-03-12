@@ -46,6 +46,34 @@ impl PartialOrd for Value {
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match self {
+            Self::Boolean(b) => match other {
+                Self::Boolean(b2) => b == b2,
+                _ => false,
+            },
+            Self::Float(f) => match other {
+                Self::Float(f2) => f == f2,
+                _ => false,
+            },
+            Self::Integer(i) => match other {
+                Self::Integer(i2) => i == i2,
+                _ => false,
+            },
+            Self::UnsignedInteger(u) => match other {
+                Self::UnsignedInteger(u2) => u == u2,
+                _ => false,
+            },
+            Self::Date(d) => match other {
+                Self::Date(d2) => d == d2,
+                _ => false,
+            },
+            Self::String(s) => match other {
+                Self::String(s2) => s == s2,
+                _ => false,
+            },
+            Self::Function(f) => match other {
+                Self::Function(f2) => f == f2,
+                _ => false,
+            },
             Self::Object(o) => match other {
                 Self::Object(o2) => {
                     for x in o.keys() {
@@ -274,8 +302,8 @@ mod tests {
         let mut iso = IsoV8::new();
         let result = iso.eval("1 + 1").unwrap();
         assert_eq!(result, Value::Float(2.0));
-        // let result = iso.eval("[1, 2]").unwrap();
-        // let a = Value::Array(vec![Value::Float(1.0), Value::Float(2.0)]);
-        // assert_eq!(result, a);
+        let result = iso.eval("[1, 2]").unwrap();
+        let a = Value::Array(vec![Value::Float(1.0), Value::Float(2.0)]);
+        assert_eq!(result, a);
     }
 }
