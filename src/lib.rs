@@ -113,5 +113,16 @@ mod tests {
         map.insert(Value::String("test".to_string()), Value::Float(1.0));
         let o = Value::Object(map);
         assert_eq!(result, o);
+        // let result = iso
+        //     .eval(
+        //         r#"
+        //     function foo() {
+        //         1
+        //     }
+        //     foo()
+        //     "#,
+        //     )
+        //     .unwrap();
+        // assert_eq!(result, Value::Float(1.0));
     }
 }
