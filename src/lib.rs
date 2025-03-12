@@ -1,13 +1,9 @@
 pub mod value;
 
 use crate::value::*;
-use std::sync::{Arc, Mutex, Once};
+use std::sync::Once;
 
 pub type Result = std::result::Result<Value, Error>;
-
-lazy_static::lazy_static! {
-    static ref ISOLATE: Arc<Mutex<Option<v8::OwnedIsolate>>> = Arc::new(Mutex::new(None));
-}
 
 #[derive(Debug)]
 pub enum Error {
@@ -16,22 +12,16 @@ pub enum Error {
 }
 
 pub struct IsoV8 {
+    isolate: v8::OwnedIsolate,
     context: v8::Global<v8::Context>,
 }
 
 impl IsoV8 {
     pub fn new() -> Self {
         init_v8();
-        let mut lock = ISOLATE.lock().unwrap();
-        if let None = *lock {
-            let isolate = v8::Isolate::new(Default::default());
-            ISOLATE.lock().unwrap().replace(isolate);
-        };
-
-        let mut isolate = lock.take().unwrap();
+        let mut isolate = v8::Isolate::new(Default::default());
         let context = initialize_slots(&mut isolate);
-        lock.replace(isolate);
-        Self { context }
+        Self { isolate, context }
     }
 
     pub fn eval(&mut self, source: impl Into<String>) -> Result {
@@ -56,9 +46,7 @@ impl IsoV8 {
     where
         F: FnOnce(&mut v8::ContextScope<v8::HandleScope>) -> T,
     {
-        let mut lock = ISOLATE.lock().unwrap();
-        let isolate = lock.as_mut().unwrap();
-        let scope = &mut v8::HandleScope::new(isolate);
+        let scope = &mut v8::HandleScope::new(&mut self.isolate);
         let context = v8::Local::new(scope, self.context.clone());
         let scope = &mut v8::ContextScope::new(scope, context);
         func(scope)
