@@ -16,6 +16,12 @@ pub struct IsoV8 {
     context: v8::Global<v8::Context>,
 }
 
+impl Drop for IsoV8 {
+    fn drop(&mut self) {
+        self.isolate.terminate_execution();
+    }
+}
+
 impl IsoV8 {
     pub fn new() -> Self {
         init_v8();
@@ -125,5 +131,40 @@ mod tests {
             )
             .unwrap();
         assert_eq!(result, Value::Float(1.0));
+    }
+
+    #[test]
+    fn test_types() {
+        let mut map = BTreeMap::default();
+        map.insert(Value::String("test".to_string()), Value::Float(1.0));
+        let o = Value::Object(map);
+        let mut iso = IsoV8::new();
+        // let table = vec![
+        //     ("1 + 1", Value::Float(2.0), "numbers"),
+        //     (
+        //         "[1, 2]",
+        //         Value::Array(vec![Value::Float(1.0), Value::Float(2.0)]),
+        //         "array of numbers",
+        //     ),
+        //     ("({ \"test\": 1 })", o, "object"),
+        //     ("undefined", Value::Undefined, "undefined"),
+        //     ("null", Value::Null, "null"),
+        //     (
+        //         "new Date(\"2025-03-11\")",
+        //         Value::Date(17416512000000.0),
+        //         "date",
+        //     ),
+        //     (
+        //         r#"'this is a string'"#,
+        //         Value::String("this is a string".to_string()),
+        //         "string",
+        //     ),
+        // ];
+        //
+        // for item in table {
+        //     eprintln!("{}", item.2);
+        //     let result = iso.eval(item.0).unwrap();
+        //     assert_eq!(result, item.1, "{}", item.2);
+        // }
     }
 }
