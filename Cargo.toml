@@ -6,3 +6,7 @@ edition = "2024"
 [dependencies]
 v8 = "*"
 anyhow = "*"
+lazy_static = "*"
+
+[profile.dev.package.v8]
+opt-level = 1
