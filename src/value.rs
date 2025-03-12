@@ -93,7 +93,9 @@ impl PartialEq for Value {
                 }
                 _ => false,
             },
-            _ => *self == *other,
+            Self::NoValue => matches!(other, Self::NoValue),
+            Self::Null => matches!(other, Self::Null),
+            Self::Undefined => matches!(other, Self::Undefined),
         }
     }
 }
