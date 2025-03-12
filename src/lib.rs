@@ -34,7 +34,7 @@ impl Eq for Value {}
 
 impl Ord for Value {
     fn cmp(&self, _other: &Self) -> std::cmp::Ordering {
-        std::cmp::Ordering::Greater
+        std::cmp::Ordering::Equal
     }
 }
 impl PartialOrd for Value {
@@ -174,31 +174,39 @@ impl Value {
             return Self::Date(value.number_value(scope).unwrap());
         } else if value.is_boolean() {
             return Self::Boolean(value.boolean_value(scope));
-        } else if value.is_array() {
-            let ary = value.cast::<v8::Array>();
-            let mut new = Array::new();
-
-            for x in 0..ary.length() {
-                let v = ary.get_index(scope, x).unwrap();
-                new.push(Self::new(scope, v));
-            }
-
-            return Self::Array(new);
         } else if value.is_object() {
-            let obj = value.cast::<v8::Object>();
-            let props = obj.get_property_names(scope, Default::default()).unwrap();
-            let ary = props.cast::<v8::Array>();
-            let mut new = Object::default();
+            let obj = value.to_object(scope);
+            match obj {
+                Some(o) => {
+                    if value.is_array() {
+                        let ary = value.cast::<v8::Array>();
+                        if ary.length() > 0 {
+                            let mut new = Array::new();
 
-            for x in 0..ary.length() {
-                let v = ary.get_index(scope, x).unwrap();
-                let k = obj.get(scope, v).unwrap();
-                new.insert(Self::new(scope, v), Self::new(scope, k));
+                            for x in 0..ary.length() {
+                                let v = ary.get_index(scope, x).unwrap();
+                                new.push(Self::new(scope, v));
+                            }
+
+                            return Self::Array(new);
+                        }
+                    }
+
+                    let ary = o.get_property_names(scope, Default::default()).unwrap();
+                    let mut new = Object::default();
+
+                    for x in 0..ary.length() {
+                        let k = ary.get_index(scope, x).unwrap();
+                        let v = o.get(scope, k).unwrap();
+                        new.insert(Self::new(scope, k), Self::new(scope, v));
+                    }
+
+                    return Self::Object(new);
+                }
+                None => Self::NoValue,
             }
-
-            return Self::Object(new);
         } else {
-            return Self::NoValue;
+            Self::NoValue
         }
     }
 }
@@ -206,7 +214,7 @@ impl Value {
 #[derive(Debug)]
 pub enum Error {
     Timeout,
-    Value(v8::Value),
+    Value(String),
 }
 
 pub struct IsoV8 {
@@ -279,8 +287,8 @@ fn initialize_slots(isolate: &mut v8::Isolate) -> v8::Global<v8::Context> {
 pub fn exception(scope: &mut v8::TryCatch<v8::HandleScope>) -> Result {
     if scope.has_terminated() {
         Err(Error::Timeout)
-    } else if let Some(exception) = scope.exception().clone() {
-        Err(Error::Value(*exception))
+    } else if let Some(exception) = scope.exception() {
+        Err(Error::Value(exception.to_rust_string_lossy(scope)))
     } else {
         Ok(Value::NoValue)
     }
@@ -305,5 +313,10 @@ mod tests {
         let result = iso.eval("[1, 2]").unwrap();
         let a = Value::Array(vec![Value::Float(1.0), Value::Float(2.0)]);
         assert_eq!(result, a);
+        let result = iso.eval("({ \"test\": 1 })").unwrap();
+        let mut map = BTreeMap::default();
+        map.insert(Value::String("test".to_string()), Value::Float(1.0));
+        let o = Value::Object(map);
+        assert_eq!(result, o);
     }
 }
